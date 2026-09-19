@@ -147,7 +147,7 @@ async function scanFileList(files){
       name:f.name,
       path:p,
       size:f.size,
-      status:/\\.(exe|dll|sys|msi|bat|cmd|ps1)$/i.test(f.name)?'Jangan Hapus':/\\.(tmp|temp|cache|log)$/i.test(f.name)?'Aman':'Perlu Dicek',
+      status:/\.(exe|dll|sys|msi|bat|cmd|ps1)$/i.test(f.name)?'Jangan Hapus':/\.(tmp|temp|cache|log)$/i.test(f.name)?'Aman':'Perlu Dicek',
       reason:'Hasil klasifikasi browser',
       canTrash:false
     });
@@ -167,18 +167,21 @@ async function webPick(){
       $('status').textContent='Scanning folder...';$('bar').style.width='5%';
       async function walk(d,parts){
         for await(const [name,h] of d.entries()){
-          let p=parts.concat(name).join('/');
+          const p=parts.concat(name).join('/');
           try{
             if(h.kind==='file'){
-              let f=await h.getFile();
-              S.files.push({name,path:p,size:f.size,status:/\\.(exe|dll|sys|msi|bat|cmd|ps1)$/i.test(name)?'Jangan Hapus':/\\.(tmp|temp|cache|log)$/i.test(name)?'Aman':'Perlu Dicek',reason:'Hasil klasifikasi browser',handle:h,canTrash:false});
+              const f=await h.getFile();
+              S.files.push({
+                name,path:p,size:f.size,
+                status:/\.(exe|dll|sys|msi|bat|cmd|ps1)$/i.test(name)?'Jangan Hapus':/\.(tmp|temp|cache|log)$/i.test(name)?'Aman':'Perlu Dicek',
+                reason:'Hasil klasifikasi browser',handle:h,canTrash:false
+              });
             }else await walk(h,parts.concat(name));
           }catch{S.blocked.push({path:p,error:'ACCESS_DENIED'})}
         }
       }
       await walk(S.handle,[]);
-      render();
-      $('bar').style.width='100%';
+      render();$('bar').style.width='100%';
       $('status').textContent='Storage terhubung: '+S.files.length.toLocaleString()+' file. '+S.blocked.length.toLocaleString()+' lokasi tidak terbaca.';
       $('notice').textContent='📱 PWA Android aktif. Folder yang kamu pilih sudah terhubung untuk analisis lokal; penghapusan tetap read-only di browser.';
     }else{
@@ -186,7 +189,6 @@ async function webPick(){
     }
   }catch(e){if(e.name!=='AbortError')alert(e.message)}
 }
-if(!window.showDirectoryPicker)return alert('Gunakan Chrome atau Edge terbaru.');try{S.handle=await showDirectoryPicker({mode:'read'});S.desktop=false;S.files=[];S.blocked=[];$('status').textContent='Scanning folder...';async function walk(d,parts){for await(const [name,h] of d.entries()){let p=parts.concat(name).join('/');try{if(h.kind==='file'){let f=await h.getFile();S.files.push({name,path:p,size:f.size,status:/\.(exe|dll|sys|msi|bat|cmd|ps1)$/i.test(name)?'Jangan Hapus':/\.(tmp|temp|cache|log)$/i.test(name)?'Aman':'Perlu Dicek',reason:'Hasil klasifikasi browser',handle:h})}else await walk(h,parts.concat(name))}catch{S.blocked.push({path:p,error:'ACCESS_DENIED'})}}}await walk(S.handle,[]);render();$('status').textContent='Scan folder selesai: '+S.files.length.toLocaleString()+' file. '+S.blocked.length.toLocaleString()+' lokasi tidak terbaca.'}catch(e){if(e.name!=='AbortError')alert(e.message)}}
 
 async function mtpScan(){
   if(!S.desktop||!window.storageDesktop?.mtpList){
@@ -234,6 +236,12 @@ $('safeAll').onclick=()=>{document.querySelectorAll('.ck:not(:disabled)').forEac
 $('largeOnly').onclick=()=>{$('filter').value='BESAR';$('sort').value='desc';$('q').value='';S.page=0;render();setTimeout(()=>{$('status').textContent='Menampilkan file terbesar. Periksa sebelum menghapus.'},0)};
 $('junkOnly').onclick=()=>{$('filter').value='Aman';S.page=0;render();$('status').textContent='Menampilkan kandidat file sementara/cache yang lolos pemeriksaan awal.'};
 $('delete').onclick=async()=>{let a=[...document.querySelectorAll('.ck:checked')].map(c=>S.files[+c.dataset.i]).filter(x=>x&&x.status==='Aman'&&x.canTrash);if(!a.length)return alert('Pilih file berstatus Aman.');if(!S.desktop)return alert('Mode web tidak menghapus file. Gunakan Desktop EXE untuk penghapusan aman ke Recycle Bin.');if(!confirm('Pindahkan '+a.length+' file ke Recycle Bin?'))return;let r=await window.storageDesktop.trashFiles(a.map(x=>x.path));alert(r.ok+' file dipindahkan ke Recycle Bin.');await desktopScan()};
-if(S.desktop){$('notice').textContent='Desktop mode aktif. Scan berjalan bertahap dan hasil file muncul LIVE. Permission error tidak menghentikan scan; lokasi yang ditolak dicatat sebagai warning.';$('rescan').disabled=false;$('delete').disabled=false}else{$('scan').textContent='📱 Scan Storage HP';$('notice').textContent='PWA/ Web mode: tekan Hubungkan Storage HP untuk memilih folder penyimpanan. Untuk akses filesystem Windows tanpa batasan browser, gunakan StorageCleaner.exe.' Untuk scan seluruh C:/D: dan menangani permission Windows tanpa batasan browser, gunakan StorageCleaner.exe.'}
+if(S.desktop){
+  $('notice').textContent='Desktop mode aktif. Scan berjalan bertahap dan hasil file muncul LIVE. Permission error tidak menghentikan scan; lokasi yang ditolak dicatat sebagai warning.';
+  $('rescan').disabled=false;$('delete').disabled=false;
+}else{
+  $('scan').textContent='📱 Scan Storage HP';
+  $('notice').textContent='PWA/Web mode: tekan Hubungkan Storage HP untuk memilih folder penyimpanan. Analisis berjalan lokal di perangkat dan tidak mengunggah file.';
+}
 render();renderAnalytics();updateDeleteButton();
 </script></body></html>
