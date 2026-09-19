@@ -21,24 +21,39 @@ function Get-DeviceRoots {
   $out = @()
   foreach($item in @($thisPc.Items())) {
     try {
-      $folder = $item.GetFolder()
-      if ($null -ne $folder -and $item.IsFolder) {
+      $folder = $null
+      try { $folder = $item.GetFolder() } catch {}
+
+      # WPD/MTP devices are exposed by Explorer as virtual shell folders.
+      # Do not require a visible child folder here: some Android devices expose
+      # their storage only after the device is unlocked / File Transfer is active.
+      if($null -ne $folder) {
+        $name = [string]$item.Name
+        $itemPath = [string]$item.Path
+        $itemType = [string]$item.Type
+
         $children = Get-ItemChildren $item
-        $hasStorage = $false
-        foreach($child in $children) {
-          if($child.IsFolder) { $hasStorage = $true; break }
-        }
-        if($hasStorage) {
+        $hasFolder = @($children | Where-Object { $_.IsFolder }).Count -gt 0
+        $looksPortable = (
+          $itemType -match '(Portable|MTP|WPD|Phone|Device)' -or
+          $name -match '(Android|Phone|Redmi|POCO|vivo|OPPO|realme|Samsung|Xiaomi|TECNO|Infinix|OnePlus|Pixel|HONOR|HUAWEI)'
+        )
+
+        if($hasFolder -or $looksPortable) {
           $out += [pscustomobject]@{
-            name=[string]$item.Name
-            path=[string]$item.Path
+            name=$name
+            path=$itemPath
             type="WPD/MTP"
+            shellType=$itemType
+            storageCount=@($children | Where-Object { $_.IsFolder }).Count
           }
         }
       }
     } catch {}
   }
-  return $out
+
+  # Remove duplicates caused by Explorer exposing the same WPD object twice.
+  @($out | Group-Object path | ForEach-Object { $_.Group[0] })
 }
 
 function Get-DeviceFolderByPath($path) {
