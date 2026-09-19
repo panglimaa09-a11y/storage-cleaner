@@ -1,10 +1,10 @@
-name: Build Storage Cleaner Windows EXE
+name: Build Storage Cleaner Windows + Android
 on:
   push:
     branches: [main]
   workflow_dispatch:
 jobs:
-  build:
+  windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,3 +17,21 @@ jobs:
         with:
           name: StorageCleaner-Windows
           path: dist/*.exe
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Build APK
+        run: gradle :app:assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StorageCleaner-Android
+          path: android/app/build/outputs/apk/debug/app-debug.apk
