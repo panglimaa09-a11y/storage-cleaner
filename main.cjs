@@ -2,6 +2,8 @@ const {app,BrowserWindow,ipcMain,shell}=require('electron');
 const fs=require('fs');
 const fsp=fs.promises;
 const path=require('path');
+const {execFile}=require('child_process');
+const os=require('os');
 
 let win;
 let scanning=false;
@@ -247,6 +249,38 @@ ipcMain.handle('scan-start',async()=>{
 ipcMain.handle('scan-cancel',()=>{
   cancelScan=true;
   return {ok:true};
+});
+
+
+
+function runMtpHelper(mode,args=[]){
+  return new Promise((resolve,reject)=>{
+    const helperPath=path.join(__dirname,'mtp-helper.ps1');
+    const psArgs=[
+      '-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass',
+      '-File',helperPath,'-Mode',mode
+    ];
+    if(mode==='scan')psArgs.push('-TargetPath',String(args[0]||''));
+    execFile('powershell.exe',psArgs,{windowsHide:true,maxBuffer:64*1024*1024},(error,stdout,stderr)=>{
+      if(error)return reject(new Error((stderr||stdout||error.message).trim()));
+      try{resolve(stdout.trim()?JSON.parse(stdout):[])}
+      catch(e){reject(new Error('Respons MTP tidak valid: '+e.message))}
+    });
+  });
+}
+
+ipcMain.handle('mtp-list',async()=>{
+  try{return {ok:true,devices:await runMtpHelper('list')}}
+  catch(e){return {ok:false,error:e.message,devices:[]}}
+});
+
+ipcMain.handle('mtp-scan',async(_,targetPath)=>{
+  try{
+    const files=await runMtpHelper('scan',[targetPath]);
+    return {ok:true,files:Array.isArray(files)?files:(files?[files]:[])}
+  }catch(e){
+    return {ok:false,error:e.message,files:[]};
+  }
 });
 
 ipcMain.handle('trash-files',async(_,paths)=>{
