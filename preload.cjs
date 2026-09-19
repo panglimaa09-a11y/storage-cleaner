@@ -1,5 +1,8 @@
 const {contextBridge,ipcRenderer}=require('electron');
 contextBridge.exposeInMainWorld('storageDesktop',{
-  scanAll:()=>ipcRenderer.invoke('scan-all'),
-  trashFiles:(paths)=>ipcRenderer.invoke('trash-files',paths)
+ startScan:()=>ipcRenderer.invoke('scan-start'),
+ cancelScan:()=>ipcRenderer.invoke('scan-cancel'),
+ trashFiles:p=>ipcRenderer.invoke('trash-files',p),
+ onProgress:cb=>ipcRenderer.on('scan-progress',(_,d)=>cb(d)),
+ onError:cb=>ipcRenderer.on('scan-error',(_,d)=>cb(d))
 });
