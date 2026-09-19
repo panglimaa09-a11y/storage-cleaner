@@ -1,0 +1,20 @@
+{
+  "name": "storage-cleaner",
+  "version": "1.0.0",
+  "private": true,
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^38.1.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.panglimaa.storagecleaner",
+    "productName": "Storage Cleaner",
+    "files": ["main.cjs", "preload.cjs", "index.html"],
+    "win": { "target": ["portable"] }
+  }
+}
