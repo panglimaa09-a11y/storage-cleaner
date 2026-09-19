@@ -14,7 +14,16 @@
   "build": {
     "appId": "com.panglimaa.storagecleaner",
     "productName": "Storage Cleaner",
-    "files": ["main.cjs", "preload.cjs", "index.html"],
-    "win": { "target": ["portable"] }
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "index.html",
+      "mtp-helper.ps1"
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ]
+    }
   }
 }
