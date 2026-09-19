@@ -96,6 +96,15 @@ class MainActivity : Activity() {
         private fun scanStorage(): JSONObject {
             val root = Environment.getExternalStorageDirectory()
             val result = JSONObject()
+            if (!root.exists() || !root.isDirectory) {
+                return result.put("ok", false).put("error", "Storage perangkat tidak ditemukan.")
+            }
+            if (!hasStorageAccess() || !root.canRead()) {
+                return result.put("ok", false).put(
+                    "error",
+                    "Storage belum memiliki izin akses. Buka izin Akses semua file untuk Storage Cleaner."
+                )
+            }
             val categories = JSONObject()
             val sources = JSONObject()
             var files = 0L
