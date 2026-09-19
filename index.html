@@ -8,9 +8,9 @@
 <div class="actions"><button id="scan" class="primary">🔍 Scan Semua Storage</button><button id="rescan" disabled>↻ Sinkron</button><button id="delete" disabled>🗑 Pindahkan ke Recycle Bin</button></div></div>
 <div class="notice" id="notice">Desktop mode: scan seluruh drive dan lewati folder yang ditolak Windows sambil mencatatnya sebagai warning. Web mode: browser hanya dapat membaca folder yang kamu pilih.</div>
 <div class="cards"><div class="card">File<div class="num" id="count">0</div></div><div class="card">Total<div class="num" id="total">0 B</div></div><div class="card">≥ 1 GB<div class="num" id="large">0</div></div><div class="card">Aman<div class="num safe" id="safe">0 B</div></div><div class="card">Perlu Dicek<div class="num review" id="review">0 B</div></div><div class="card">Tidak Terbaca<div class="num warn" id="blocked">0</div></div><div class="card">Bisa Dipindah<div class="num safe" id="ready">0</div></div></div>
-<div class="filters"><input id="q" placeholder="Cari nama/path..."><select id="filter"><option value="">Semua status</option><option>Aman</option><option>Perlu Dicek</option><option>Jangan Hapus</option><option value="Tidak Terbaca">⚠ Tidak Terbaca</option></select><select id="sort"><option value="desc">Terbesar → terkecil</option><option value="asc">Terkecil → terbesar</option></select><button id="pick">📁 Pilih Folder (Web)</button><button id="safeAll">Pilih semua Aman</button></div>
+<div class="filters"><input id="q" placeholder="Cari nama/path..."><select id="filter"><option value="">Semua status</option><option>Aman</option><option>Perlu Dicek</option><option>Jangan Hapus</option><option value="Tidak Terbaca">⚠ Tidak Terbaca</option></select><select id="sort"><option value="desc">Terbesar → terkecil</option><option value="asc">Terkecil → terbesar</option></select><button id="mtp">📱 Scan HP / USB MTP</button><button id="pick">📁 Pilih Folder (Web)</button><button id="safeAll">Pilih semua Aman</button></div>
 <div class="progress"><div class="bar" id="bar"></div></div><div class="muted" id="status">Siap.</div>
-<div id="warningBox" class="notice" style="display:none;margin:12px 0"></div><div id="safetyBox" class="notice" style="margin:12px 0">Status <b>Aman</b> hanya diberikan untuk file sementara/cache yang lolos pemeriksaan awal akses folder. Pemindahan tetap masuk Recycle Bin dan dapat gagal jika Windows/ACL sedang mengunci file.</div><div class="table"><table><thead><tr><th></th><th>Nama</th><th>Ukuran</th><th>Status</th><th>Alasan</th><th>Lokasi</th></tr></thead><tbody id="rows"><tr><td colspan="6" class="empty">Tekan Scan Semua Storage.</td></tr></tbody></table></div>
+<div id="warningBox" class="notice" style="display:none;margin:12px 0"></div><div id="deviceBox" class="notice" style="display:none;margin:12px 0"></div><div id="safetyBox" class="notice" style="margin:12px 0">Status <b>Aman</b> hanya diberikan untuk file sementara/cache yang lolos pemeriksaan awal akses folder. Pemindahan tetap masuk Recycle Bin dan dapat gagal jika Windows/ACL sedang mengunci file.</div><div class="table"><table><thead><tr><th></th><th>Nama</th><th>Ukuran</th><th>Status</th><th>Alasan</th><th>Lokasi</th></tr></thead><tbody id="rows"><tr><td colspan="6" class="empty">Tekan Scan Semua Storage.</td></tr></tbody></table></div>
 <div class="pager"><button id="prev">Sebelumnya</button><span id="page">0 / 0</span><button id="next">Berikutnya</button></div>
 </div>
 <script>
@@ -121,7 +121,42 @@ function applyProgress(r){
 if(S.desktop){window.storageDesktop.onProgress(applyProgress);window.storageDesktop.onError(e=>{$('status').textContent='ERROR: '+e.message;scanning=false;$('scan').disabled=false})}
 async function desktopScan(){if(!S.desktop||scanning)return;scanning=true;S.page=0;S.files=[];S.blocked=[];$('scan').textContent='⏹ Hentikan Scan';$('scan').disabled=false;$('rescan').disabled=true;$('status').textContent='Memulai scan semua drive...';$('bar').style.width='2%';render();await window.storageDesktop.startScan()}
 async function webPick(){if(!window.showDirectoryPicker)return alert('Gunakan Chrome atau Edge terbaru.');try{S.handle=await showDirectoryPicker({mode:'read'});S.desktop=false;S.files=[];S.blocked=[];$('status').textContent='Scanning folder...';async function walk(d,parts){for await(const [name,h] of d.entries()){let p=parts.concat(name).join('/');try{if(h.kind==='file'){let f=await h.getFile();S.files.push({name,path:p,size:f.size,status:/\.(exe|dll|sys|msi|bat|cmd|ps1)$/i.test(name)?'Jangan Hapus':/\.(tmp|temp|cache|log)$/i.test(name)?'Aman':'Perlu Dicek',reason:'Hasil klasifikasi browser',handle:h})}else await walk(h,parts.concat(name))}catch{S.blocked.push({path:p,error:'ACCESS_DENIED'})}}}await walk(S.handle,[]);render();$('status').textContent='Scan folder selesai: '+S.files.length.toLocaleString()+' file. '+S.blocked.length.toLocaleString()+' lokasi tidak terbaca.'}catch(e){if(e.name!=='AbortError')alert(e.message)}}
-$('scan').onclick=async()=>{if(S.desktop&&scanning){await window.storageDesktop.cancelScan();scanning=false;$('scan').textContent='🔍 Scan Semua Storage';$('rescan').disabled=false;$('status').textContent='Scan dihentikan. Data yang sudah ditemukan tetap tersedia.'}else if(S.desktop)desktopScan();else webPick()};$('rescan').onclick=desktopScan;$('pick').onclick=webPick;
+
+async function mtpScan(){
+  if(!S.desktop||!window.storageDesktop?.mtpList){
+    return alert('Fitur HP/USB MTP tersedia di Storage Cleaner Desktop.');
+  }
+  $('status').textContent='Mendeteksi HP/USB MTP...';
+  $('deviceBox').style.display='block';
+  $('deviceBox').textContent='🔎 Mencari perangkat portable...';
+  const list=await window.storageDesktop.mtpList();
+  if(!list.ok||!list.devices?.length){
+    $('deviceBox').textContent='📱 Tidak ada perangkat MTP yang terbaca. Sambungkan HP, buka kunci layar, lalu pilih mode USB “File Transfer”.';
+    return;
+  }
+
+  const device=list.devices[0];
+  $('deviceBox').textContent='📱 Perangkat terdeteksi: '+device.name+' — '+device.path;
+  $('status').textContent='Scanning storage HP...';
+
+  const result=await window.storageDesktop.mtpScan(device.path);
+  if(!result.ok){
+    $('status').textContent='MTP ERROR: '+result.error;
+    $('deviceBox').textContent='⚠️ '+result.error;
+    return;
+  }
+
+  S.files=result.files||[];
+  S.blocked=[];
+  S.page=0;
+  S.files.forEach(x=>{x.canTrash=false});
+  $('delete').disabled=true;
+  $('status').textContent='Scan HP selesai: '+S.files.length.toLocaleString()+' file. Mode MTP saat ini read-only untuk mencegah penghapusan yang salah.';
+  $('bar').style.width='100%';
+  render();
+}
+
+$('scan').onclick=async()=>{if(S.desktop&&scanning){await window.storageDesktop.cancelScan();scanning=false;$('scan').textContent='🔍 Scan Semua Storage';$('rescan').disabled=false;$('status').textContent='Scan dihentikan. Data yang sudah ditemukan tetap tersedia.'}else if(S.desktop)desktopScan();else webPick()};$('rescan').onclick=desktopScan;$('pick').onclick=webPick;$('mtp').onclick=mtpScan;
 $('q').oninput=()=>{S.page=0;render()};$('filter').onchange=()=>{S.page=0;render()};$('sort').onchange=()=>{S.page=0;render()};$('prev').onclick=()=>{if(S.page){S.page--;render()}};$('next').onclick=()=>{S.page++;render()};
 $('safeAll').onclick=()=>document.querySelectorAll('.ck:not(:disabled)').forEach(c=>{let x=S.files[+c.dataset.i];if(x&&x.status==='Aman'&&x.canTrash)c.checked=true});
 $('delete').onclick=async()=>{let a=[...document.querySelectorAll('.ck:checked')].map(c=>S.files[+c.dataset.i]).filter(x=>x&&x.status==='Aman'&&x.canTrash);if(!a.length)return alert('Pilih file berstatus Aman.');if(!S.desktop)return alert('Mode web tidak menghapus file. Gunakan Desktop EXE untuk penghapusan aman ke Recycle Bin.');if(!confirm('Pindahkan '+a.length+' file ke Recycle Bin?'))return;let r=await window.storageDesktop.trashFiles(a.map(x=>x.path));alert(r.ok+' file dipindahkan ke Recycle Bin.');await desktopScan()};
