@@ -19,45 +19,54 @@ function Get-ItemChildren($folderItem) {
 
 function Get-DeviceRoots {
   $out = @()
+
+  # WPD is the authoritative Windows device class for MTP phones.
+  # Shell.Application is used only to obtain the Explorer namespace object
+  # that can actually be scanned.
+  $pnpNames = @()
+  try {
+    $pnpNames = @(Get-PnpDevice -PresentOnly -Class WPD -ErrorAction Stop |
+      Where-Object { $_.Status -eq 'OK' -or $_.Status -eq 'Unknown' } |
+      ForEach-Object { [string]$_.FriendlyName } |
+      Where-Object { $_ })
+  } catch {}
+
   foreach($item in @($thisPc.Items())) {
     try {
       $folder = $null
       try { $folder = $item.GetFolder() } catch {}
+      if($null -eq $folder) { continue }
 
-      # WPD/MTP devices are exposed by Explorer as virtual shell folders.
-      # Do not require a visible child folder here: some Android devices expose
-      # their storage only after the device is unlocked / File Transfer is active.
-      if($null -ne $folder) {
-        $name = [string]$item.Name
-        $itemPath = [string]$item.Path
-        $itemType = [string]$item.Type
+      $name = [string]$item.Name
+      $itemPath = [string]$item.Path
+      $itemType = [string]$item.Type
+      $children = Get-ItemChildren $item
+      $childFolders = @($children | Where-Object { $_.IsFolder })
+      $hasFolder = $childFolders.Count -gt 0
 
-        $children = Get-ItemChildren $item
-        $hasFolder = @($children | Where-Object { $_.IsFolder }).Count -gt 0
-        $looksPortable = (
-          $itemType -match '(Portable|MTP|WPD|Phone|Device)' -or
-          $name -match '(Android|Phone|Redmi|POCO|vivo|OPPO|realme|Samsung|Xiaomi|TECNO|Infinix|OnePlus|Pixel|HONOR|HUAWEI)'
-        )
+      $looksPortable = (
+        $itemType -match '(Portable|MTP|WPD|Phone|Device)' -or
+        $name -match '(Android|Phone|Redmi|POCO|vivo|OPPO|realme|Samsung|Xiaomi|TECNO|Infinix|OnePlus|Pixel|HONOR|HUAWEI)' -or
+        @($pnpNames | Where-Object { $_ -and ($name -like "*$_*" -or $_ -like "*$name*") }).Count -gt 0
+      )
 
-        # Only return actual portable/WPD devices. Previously $hasFolder alone
-        # also matched C:/D:/USB disks, causing the first result to be a local drive.
-        if($looksPortable) {
-          $out += [pscustomobject]@{
-            name=$name
-            path=$itemPath
-            type="WPD/MTP"
-            shellType=$itemType
-            storageCount=@($children | Where-Object { $_.IsFolder }).Count
-          }
+      # Never treat normal filesystem drives as MTP.
+      $isDrive = $itemPath -match '^[A-Za-z]:\\?$'
+      if($looksPortable -and -not $isDrive) {
+        $out += [pscustomobject]@{
+          name=$name
+          path=$itemPath
+          type="WPD/MTP"
+          shellType=$itemType
+          storageCount=$childFolders.Count
+          pnpMatch=@($pnpNames | Where-Object { $_ -and ($name -like "*$_*" -or $_ -like "*$name*") } | Select-Object -First 1)
         }
       }
     } catch {}
   }
 
-  # Remove duplicates caused by Explorer exposing the same WPD object twice.
   @($out | Group-Object path | ForEach-Object { $_.Group[0] })
 }
-
 function Get-DeviceFolderByPath($path) {
   if([string]::IsNullOrWhiteSpace($path)) { return $null }
   foreach($item in @($thisPc.Items())) {
