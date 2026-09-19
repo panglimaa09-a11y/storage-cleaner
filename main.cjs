@@ -40,6 +40,22 @@ const systemExts=new Set([
 
 const tempExts=new Set(['.tmp','.temp','.cache']);
 const dirDeleteAccessCache=new Map();
+function rootDrive(p){return /^[A-Za-z]:\\/.test(p)?p.slice(0,2).toUpperCase():'MTP'}
+function newDriveStat(){return {files:0,total:0,safe:0,review:0,protected:0,blocked:0,cleanable:0}}
+function analytics(files,blocked,driveStats){
+  const categories={temp:0,cache:0,logs:0,dumps:0,large:0,cleanable:0,protected:0,review:0};
+  for(const x of files){
+    const ext=path.extname(x.name).toLowerCase(), p=x.path.toLowerCase();
+    const d=driveStats[rootDrive(x.path)]||(driveStats[rootDrive(x.path)]=newDriveStat());
+    d.files++; d.total+=x.size;
+    if(x.status==='Aman'){categories.cleanable+=x.size;categories.temp+=/temp|tmp/.test(p)||['.tmp','.temp'].includes(ext)?x.size:0;categories.cache+=/cache/.test(p)||ext==='.cache'?x.size:0;categories.logs+=ext==='.log'?x.size:0;categories.dumps+=ext==='.dmp'?x.size:0;d.safe+=x.size;d.cleanable++}
+    else if(x.status==='Jangan Hapus'){categories.protected+=x.size;d.protected++}
+    else {categories.review+=x.size;d.review++}
+    if(x.size>=1073741824)categories.large+=x.size;
+  }
+  for(const b of blocked){const d=driveStats[rootDrive(b.path)]||(driveStats[rootDrive(b.path)]=newDriveStat());d.blocked++}
+  return categories;
+}
 
 function isUnder(p,root){return p===root||p.startsWith(root+path.sep)}
 
@@ -134,6 +150,7 @@ async function scan(){
   const files=[];
   const blocked=[];
   const drives=getDrives();
+  const driveStats=Object.fromEntries(drives.map(d=>[d.slice(0,2).toUpperCase(),newDriveStat()]));
   let dirs=0;
   let processed=0;
   const started=Date.now();
@@ -147,6 +164,8 @@ async function scan(){
       files:files.slice(-250),
       allFiles:done?files:undefined,
       blocked:done?blocked:undefined,
+      driveStats:done?driveStats:undefined,
+      categories:done?analytics(files,blocked,driveStats):undefined,
       elapsedMs:Date.now()-started
     });
   };
@@ -225,6 +244,8 @@ async function scan(){
     files:files.slice(-250),
     allFiles:files,
     blocked,
+    driveStats,
+    categories:analytics(files,blocked,driveStats),
     elapsedMs:Date.now()-started
   });
 
