@@ -1,0 +1,12 @@
+{
+  "name": "Storage Cleaner",
+  "short_name": "Storage Cleaner",
+  "description": "Storage analyzer untuk Windows dan Android dengan pemrosesan lokal.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#050812",
+  "theme_color": "#0b1222",
+  "orientation": "portrait-primary",
+  "lang": "id-ID",
+  "icons": []
+}
