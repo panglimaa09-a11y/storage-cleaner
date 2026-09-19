@@ -71,8 +71,8 @@ class MainActivity : Activity() {
 
     inner class StorageBridge(private val context: Context, private val view: WebView) {
         @JavascriptInterface fun isAndroid(): Boolean = true
-        @JavascriptInterface fun hasStorageAccess(): Boolean = hasStorageAccess()
-        @JavascriptInterface fun requestStorageAccess() { runOnUiThread { requestStorageAccess() } }
+        @JavascriptInterface fun hasStorageAccess(): Boolean = this@MainActivity.hasStorageAccess()
+        @JavascriptInterface fun requestStorageAccess() { runOnUiThread { this@MainActivity.requestStorageAccess() } }
 
         @JavascriptInterface
         fun startScan() {
