@@ -23,30 +23,105 @@ const protectedRoots=[
   process.env.ProgramData||'C:\\ProgramData'
 ].map(p=>path.resolve(p).toLowerCase());
 
+const protectedNames=new Set([
+  'system volume information',
+  '$recycle.bin',
+  'windowsapps',
+  'recovery',
+  'config.msi',
+  '$winreagent'
+]);
+
+const systemExts=new Set([
+  '.sys','.dll','.exe','.msi','.ocx','.drv','.cpl','.efi'
+]);
+
+const tempExts=new Set(['.tmp','.temp','.cache']);
+const dirDeleteAccessCache=new Map();
+
 function isUnder(p,root){return p===root||p.startsWith(root+path.sep)}
 
-function classify(filePath,size){
+function isProtectedPath(filePath){
+  const n=path.resolve(filePath).toLowerCase();
+  if(protectedRoots.some(r=>isUnder(n,r)))return true;
+
+  const relative=n.split(path.sep);
+  return relative.some(part=>protectedNames.has(part));
+}
+
+async function canDeleteFromDirectory(dir){
+  const key=path.resolve(dir).toLowerCase();
+  if(dirDeleteAccessCache.has(key))return dirDeleteAccessCache.get(key);
+
+  let ok=false;
+  try{
+    // This is a low-cost preflight only. Windows ACLs can still reject a
+    // later Recycle Bin operation, so the actual trash operation is guarded too.
+    await fsp.access(dir,fs.constants.W_OK);
+    ok=true;
+  }catch{}
+
+  dirDeleteAccessCache.set(key,ok);
+  return ok;
+}
+
+async function classify(filePath,size){
   const n=path.resolve(filePath).toLowerCase();
   const ext=path.extname(filePath).toLowerCase();
 
-  if(protectedRoots.some(r=>isUnder(n,r)))
-    return ['Jangan Hapus','Lokasi Windows/aplikasi yang dilindungi'];
+  if(isProtectedPath(filePath))
+    return {
+      status:'Jangan Hapus',
+      reason:'Lokasi Windows/aplikasi/metadata yang dilindungi',
+      canTrash:false
+    };
 
-  if(['.sys','.dll','.exe','.msi','.ocx','.drv','.cpl'].includes(ext))
-    return ['Jangan Hapus','File sistem/aplikasi'];
+  if(systemExts.has(ext))
+    return {
+      status:'Jangan Hapus',
+      reason:'File sistem/aplikasi; jangan hapus dari Storage Cleaner',
+      canTrash:false
+    };
 
   const parts=n.split(path.sep);
-  if(parts.some(x=>['temp','tmp','cache'].includes(x)) ||
-     ['.tmp','.temp','.cache','.log','.dmp'].includes(ext))
-    return ['Aman','Lokasi/file sementara terdeteksi'];
+  const tempLocation=parts.some(x=>['temp','tmp','cache'].includes(x));
+  const tempCandidate=tempLocation||tempExts.has(ext);
+
+  if(tempCandidate){
+    const parentWritable=await canDeleteFromDirectory(path.dirname(filePath));
+    if(parentWritable){
+      return {
+        status:'Aman',
+        reason:'File sementara/cache dan folder induk lolos pemeriksaan akses awal',
+        canTrash:true
+      };
+    }
+    return {
+      status:'Perlu Dicek',
+      reason:'File sementara terdeteksi, tetapi folder induk tidak lolos pemeriksaan akses awal',
+      canTrash:false
+    };
+  }
 
   if(size>=5*1024**3)
-    return ['Perlu Dicek','File sangat besar; ukuran saja bukan alasan untuk menghapus'];
+    return {
+      status:'Perlu Dicek',
+      reason:'File sangat besar; ukuran saja bukan alasan untuk menghapus',
+      canTrash:false
+    };
 
   if(size>=1024**3)
-    return ['Perlu Dicek','File besar; periksa pemilik dan kegunaannya'];
+    return {
+      status:'Perlu Dicek',
+      reason:'File besar; periksa pemilik dan kegunaannya',
+      canTrash:false
+    };
 
-  return ['Perlu Dicek','File pengguna; tidak boleh diasumsikan aman dihapus'];
+  return {
+    status:'Perlu Dicek',
+    reason:'File pengguna; tidak boleh diasumsikan aman dihapus',
+    canTrash:false
+  };
 }
 
 function send(type,data){
@@ -60,11 +135,12 @@ async function scan(){
   let dirs=0;
   let processed=0;
   const started=Date.now();
+  dirDeleteAccessCache.clear();
 
   const publish=(done=false,current='')=>{
     const total=files.reduce((sum,x)=>sum+x.size,0);
     send('scan-progress',{
-      done, current, roots:drives, dirs, processed,
+      done,current,roots:drives,dirs,processed,
       fileCount:files.length,total,blockedCount:blocked.length,
       files:files.slice(-250),
       allFiles:done?files:undefined,
@@ -76,7 +152,7 @@ async function scan(){
   async function walk(root){
     const stack=[root];
 
-    while(stack.length && !cancelScan){
+    while(stack.length&&!cancelScan){
       const dir=stack.pop();
       dirs++;
 
@@ -95,33 +171,23 @@ async function scan(){
         const full=path.join(dir,entry.name);
         try{
           if(entry.isDirectory()){
-            // Do not recurse into Windows junctions/symlinks. This prevents loops
-            // and avoids scanning the same storage repeatedly.
             let st;
             try{st=await fsp.lstat(full)}catch{continue}
             if(st.isSymbolicLink())continue;
-
-            // These locations contain protected metadata rather than useful user files.
-            // We record access failures instead of treating them as fatal.
-            if(entry.name==='$Recycle.Bin'){
-              stack.push(full);
-              continue;
-            }
             stack.push(full);
           }else if(entry.isFile()){
             const st=await fsp.stat(full);
-            const [status,reason]=classify(full,st.size);
+            const info=await classify(full,st.size);
             files.push({
               name:entry.name,
               path:full,
               size:st.size,
               modified:st.mtimeMs,
-              status,
-              reason
+              status:info.status,
+              reason:info.reason,
+              canTrash:info.canTrash
             });
             processed++;
-
-            // Keep the UI responsive on low-end machines.
             if(processed%100===0)publish(false,full);
           }
         }catch(e){
@@ -186,14 +252,36 @@ ipcMain.handle('scan-cancel',()=>{
 ipcMain.handle('trash-files',async(_,paths)=>{
   let ok=0;
   const failed=[];
-  for(const p of paths){
+
+  for(const p of Array.isArray(paths)?paths:[]){
     try{
-      await shell.trashItem(p);
+      const absolute=path.resolve(String(p));
+
+      // Never allow the renderer to bypass the scanner's safety rules.
+      if(isProtectedPath(absolute)){
+        failed.push({path:absolute,error:'PROTECTED_PATH'});
+        continue;
+      }
+
+      const st=await fsp.stat(absolute);
+      if(!st.isFile()){
+        failed.push({path:absolute,error:'NOT_A_FILE'});
+        continue;
+      }
+
+      const info=await classify(absolute,st.size);
+      if(info.status!=='Aman'||!info.canTrash){
+        failed.push({path:absolute,error:'NOT_MARKED_SAFE'});
+        continue;
+      }
+
+      await shell.trashItem(absolute);
       ok++;
     }catch(e){
-      failed.push({path:p,error:e.message});
+      failed.push({path:String(p),error:e.code||e.message});
     }
   }
+
   return {ok,failed};
 });
 
