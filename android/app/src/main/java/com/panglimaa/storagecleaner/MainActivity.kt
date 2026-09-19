@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.StatFs
 import android.provider.Settings
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
@@ -76,12 +77,18 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun startScan() {
             if (!hasStorageAccess()) {
-                runOnUiThread { view.evaluateJavascript("window.onAndroidPermissionRequired && window.onAndroidPermissionRequired()", null) }
+                runOnUiThread {
+                    view.evaluateJavascript(
+                        "window.onAndroidPermissionRequired && window.onAndroidPermissionRequired()",
+                        null
+                    )
+                }
                 return
             }
             executor.execute {
                 val result = scanStorage()
-                val js = "window.onAndroidScan && window.onAndroidScan(" + JSONObject.quote(result.toString()) + ")"
+                val js = "window.onAndroidScan && window.onAndroidScan(" +
+                    JSONObject.quote(result.toString()) + ")"
                 runOnUiThread { view.evaluateJavascript(js, null) }
             }
         }
@@ -122,7 +129,8 @@ class MainActivity : Activity() {
                         }
                         if (!f.isFile) continue
                         val size = f.length().coerceAtLeast(0L)
-                        files++; totalBytes += size
+                        files++
+                        totalBytes += size
                         val rel = try { f.relativeTo(root).path } catch (_: Exception) { f.name }
                         val first = rel.substringBefore(File.separatorChar, f.name).ifBlank { f.name }
                         addSource(first, size)
@@ -138,7 +146,10 @@ class MainActivity : Activity() {
                         }
                         if (n.contains("cache")) cache += size
                         if (ext in setOf("tmp","temp","log")) temp += size
-                        if (size >= 1024L * 1024L * 1024L) { large++; largeBytes += size }
+                        if (size >= 1024L * 1024L * 1024L) {
+                            large++
+                            largeBytes += size
+                        }
                     } catch (_: Exception) {}
                 }
             }
@@ -149,25 +160,38 @@ class MainActivity : Activity() {
             categories.put("documents", JSONObject().put("files", docs).put("bytes", docBytes))
             categories.put("apk", JSONObject().put("files", apks).put("bytes", apkBytes))
             categories.put("archives", JSONObject().put("files", archives).put("bytes", archiveBytes))
-            categories.put("cache", cache); categories.put("temp", temp)
+            categories.put("cache", cache)
+            categories.put("temp", temp)
             categories.put("large", JSONObject().put("files", large).put("bytes", largeBytes))
 
             sourceBytes.entries.sortedByDescending { it.value }.take(12).forEach { (name, bytes) ->
-                sources.put(name, JSONObject().put("bytes", bytes).put("files", sourceFiles[name] ?: 0L))
+                val source = JSONObject()
+                source.put("bytes", bytes)
+                source.put("files", sourceFiles[name] ?: 0L)
+                sources.put(name, source)
             }
 
-            val stat = root.statFs()
+            val stat = StatFs(root.absolutePath)
             val capacity = stat.totalBytes
             val free = stat.availableBytes
             val used = (capacity - free).coerceAtLeast(0L)
+
             val appCount = try {
                 packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
                     .count { (it.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0 }
-            } catch (_: Exception) { 0 }
+            } catch (_: Exception) {
+                0
+            }
 
-            result.put("ok", true).put("files", files).put("bytes", totalBytes)
-                .put("capacity", capacity).put("free", free).put("used", used)
-                .put("categories", categories).put("sources", sources).put("apps", appCount)
+            result.put("ok", true)
+            result.put("files", files)
+            result.put("bytes", totalBytes)
+            result.put("capacity", capacity)
+            result.put("free", free)
+            result.put("used", used)
+            result.put("categories", categories)
+            result.put("sources", sources)
+            result.put("apps", appCount)
             return result
         }
     }
