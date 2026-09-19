@@ -39,7 +39,9 @@ function Get-DeviceRoots {
           $name -match '(Android|Phone|Redmi|POCO|vivo|OPPO|realme|Samsung|Xiaomi|TECNO|Infinix|OnePlus|Pixel|HONOR|HUAWEI)'
         )
 
-        if($hasFolder -or $looksPortable) {
+        # Only return actual portable/WPD devices. Previously $hasFolder alone
+        # also matched C:/D:/USB disks, causing the first result to be a local drive.
+        if($looksPortable) {
           $out += [pscustomobject]@{
             name=$name
             path=$itemPath
