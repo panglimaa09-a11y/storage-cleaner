@@ -228,8 +228,10 @@ async function webPick(){
 }
 
 async function mtpScan(){
+  if(S.android)return;
   if(!S.desktop||!window.storageDesktop?.mtpList){
-    return alert('Fitur HP/USB MTP tersedia di Storage Cleaner Desktop.');
+    $('status').textContent='Fitur HP/USB MTP tersedia di Storage Cleaner Desktop.';
+    return;
   }
   $('status').textContent='Mendeteksi HP/USB MTP...';
   $('deviceBox').style.display='block';
@@ -280,5 +282,20 @@ if(S.desktop){
   $('scan').textContent='📱 Scan Storage HP';
   $('notice').textContent='PWA/Web mode: tekan Hubungkan Storage HP untuk memilih folder penyimpanan. Analisis berjalan lokal di perangkat dan tidak mengunggah file.';
 }
-if(S.android){$('androidPanel').style.display='block';}render();renderAnalytics();updateDeleteButton();
+if(S.android){
+  $('androidPanel').style.display='block';
+  $('scan').textContent='🔍 Scan Storage Android';
+  $('notice').textContent='📱 Mode Android native aktif. Scan menggunakan akses penyimpanan perangkat.';
+  ['rescan','smart','delete','mtp','pick','safeAll','largeOnly','junkOnly','q','filter','sort'].forEach(id=>{const el=$(id);if(el)el.style.display='none'});
+  $('bar').style.display='none';
+  $('warningBox').style.display='none';
+  $('deviceBox').style.display='none';
+  $('safetyBox').style.display='none';
+  document.querySelector('.table').style.display='none';
+  document.querySelector('.pager').style.display='none';
+  document.querySelector('.cards').style.display='none';
+}else{
+  $('androidPanel').style.display='none';
+}
+render();renderAnalytics();updateDeleteButton();
 </script></body></html>
